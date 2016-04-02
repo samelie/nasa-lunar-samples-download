@@ -19,6 +19,7 @@ var URL = "http://www.lpi.usra.edu/lunar/rilles/img/zoom/wac_nearside/";
 var ZOOM = 6;
 
 12, 46, 0, 93
+
 var urlInfo = {
   six: {
     zoom: 6,
@@ -49,6 +50,7 @@ var row = 0;
 var col = 0;
 var tileGroupIndex = 0;
 var imageIndex = 0;
+var imageYIndex = 0;
 
 for (var i = 0; i < total; i++) {
   if (col > choice.rows) {
@@ -60,54 +62,104 @@ for (var i = 0; i < total; i++) {
   urls.push(`${URL}****/${choice.zoom}-${col}-${row}.jpg`);
   col++;
 }
-console.log(urls);
-
 
 function pad(num, size) {
   return ('000000000' + num).substr(-size);
 }
 
 var previousTileGroupWasSuccess = false;
+
 function doTileGroup(url) {
   return new Q((resolve, reject) => {
     var tileG = tileGroups[tileGroupIndex];
+    console.log(tileG);
     var replaced = url.replace('****', tileG);
+    console.log(replaced);
     return R(replaced).then(resp => {
       var exists = resp.body.indexOf('HTTP 404');
-      if (exists < 0) {     
-      	previousTileGroupWasSuccess = true;
+      if (exists < 0) {
+        previousTileGroupWasSuccess = true;
         counter++;
         var name = pad(counter, 5);
         var out = path.join(process.cwd(), 'moon', `${name}.jpg`);
         var write_stream = fs.createWriteStream(out)
         write_stream.on('finish', function() {
-          console.log(ç.green("Wrote", out, "URL: ",replaced));
+          console.log(ç.green("Wrote", out, "URL: ", replaced));
           resolve();
         });
         r(replaced).pipe(write_stream);
       } else {
-      	if(previousTileGroupWasSuccess){
-    		previousTileGroupWasSuccess = false;
-      		tileGroupIndex++;
-        	reject();
-      	}else{
-          resolve();
-      	}
-      	console.log(ç.red("Failed URL: ",replaced));
+        //tileGroupIndex++;
+        console.log(ç.red("Failed URL: ", replaced));
+        reject();
+        // if (previousTileGroupWasSuccess) {
+        //   previousTileGroupWasSuccess = false;
+        //   tileGroupIndex++;
+        //   console.log(ç.red("Failed URL: ", replaced));
+        // } else {
+        //   resolve();
+        // }
       }
     });
   });
 }
 
-function doImage(){
-	var url = urls[imageIndex];
-	doTileGroup(url).then(()=>{
-		imageIndex++;
-		doImage();
-	}).catch(()=>{
-		//do it again
-		doImage();
-	}).done();
+function doImage(url) {
+  return new Q((resolve, reject) => {
+    return R(url).then(resp => {
+      var exists = resp.body.indexOf('HTTP 404');
+      if (exists < 0) {
+        counter++;
+        var name = pad(counter, 5);
+        var out = path.join(process.cwd(), 'moon', `${name}.jpg`);
+        var write_stream = fs.createWriteStream(out)
+        write_stream.on('finish', function() {
+          console.log(ç.green("Wrote", out, "URL: ", url));
+          resolve();
+        });
+        r(url).pipe(write_stream);
+      } else {
+        //console.log(ç.red("Failed URL: ", url));
+        reject(`Failed on ${tileGroups[tileGroupIndex]} ${url}`);
+      }
+    });
+  });
 }
 
-doImage();
+function doRow() {
+  var urls = [];
+  console.log(choice);
+  var tileG = tileGroups[tileGroupIndex];
+  for (var i = 0; i <= choice.rows; i++) {
+    urls.push(`${URL}${tileG}/${choice.zoom}-${i}-${imageYIndex}.jpg`);
+  }
+  console.log(urls);
+  return Q.map(urls, (url) => {
+    return doImage(url);
+  }, {concurrency:1}).then((results) => {
+    console.log(results);
+  }).catch((err) => {
+    console.log(err);
+    tileGroupIndex++;
+    doRow();
+  });
+}
+
+function _doTileGroups() {
+  return doRow();
+}
+
+_doTileGroups();
+
+// function doImage() {
+//   var url = urls[imageIndex];
+//   doTileGroup(url).then(() => {
+//     imageIndex++;
+//     doImage();
+//   }).catch(() => {
+//     //do it again
+//     doImage();
+//   }).done();
+// }
+
+// doImage();
